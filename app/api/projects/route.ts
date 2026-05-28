@@ -2,35 +2,6 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
-const MOCK_PROJECTS = [
-  {
-    id: 'mock-1',
-    title: 'Aura Decentralized Platform',
-    description: 'A cutting-edge Web3 analytics dashboard built with Next.js, tailwind-merge and framer-motion.',
-    category: 'web',
-    image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=600&auto=format&fit=crop',
-    link: 'https://github.com/saurabhpn03',
-    tags: ['Next.js', 'Web3', 'Tailwind']
-  },
-  {
-    id: 'mock-2',
-    title: 'Neon Vector Identity',
-    description: 'Brand identity system including logos, typography guides, and marketing assets designed in Illustrator.',
-    category: 'design',
-    image: 'https://images.unsplash.com/photo-1561070791-26c113006238?q=80&w=600&auto=format&fit=crop',
-    tags: ['Brand Identity', 'Illustrator', 'Graphic']
-  },
-  {
-    id: 'mock-3',
-    title: 'Cinematic Sound Montage',
-    description: 'Dynamic commercial video reel highlighting modern editing styles, color matching, and pacing transition mechanics.',
-    category: 'video',
-    image: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=600&auto=format&fit=crop',
-    link: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    tags: ['Premiere', 'After Effects', 'Cinematic']
-  }
-];
-
 async function isAuthenticated() {
   try {
     const cookieStore = await cookies();
@@ -43,7 +14,8 @@ async function isAuthenticated() {
 
 export async function GET() {
   if (!isSupabaseConfigured) {
-    return NextResponse.json(MOCK_PROJECTS);
+    console.warn('Supabase not configured, returning empty array.');
+    return NextResponse.json([]);
   }
   try {
     const { data, error } = await supabase
@@ -53,12 +25,12 @@ export async function GET() {
 
     if (error) {
       console.error('Error fetching projects from Supabase:', error);
-      return NextResponse.json(MOCK_PROJECTS);
+      return NextResponse.json([]);
     }
     return NextResponse.json(data || []);
   } catch (e) {
     console.error('API Error:', e);
-    return NextResponse.json(MOCK_PROJECTS);
+    return NextResponse.json([]);
   }
 }
 
