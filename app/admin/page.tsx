@@ -186,9 +186,9 @@ export default function AdminDashboard() {
     return new Blob([ab], { type: mime });
   };
 
-  const uploadFileToSupabase = async (file: File | Blob, path: string): Promise<string | null> => {
+  const uploadFileToSupabase = async (file: File | Blob, path: string): Promise<{ url: string | null; error: string | null }> => {
     if (!isSupabaseConfigured) {
-      return null;
+      return { url: null, error: 'Supabase is not configured' };
     }
     try {
       const { data, error } = await supabase.storage
@@ -196,17 +196,25 @@ export default function AdminDashboard() {
         .upload(path, file, { upsert: true });
 
       if (error) {
-        throw error;
+        return { url: null, error: error.message || JSON.stringify(error) };
+      }
+
+      if (!data) {
+        return { url: null, error: 'Upload succeeded but returned no response data.' };
       }
 
       const { data: urlData } = supabase.storage
         .from('portfolio-media')
         .getPublicUrl(data.path);
 
-      return urlData.publicUrl;
-    } catch (err) {
+      if (!urlData || !urlData.publicUrl) {
+        return { url: null, error: 'Failed to retrieve public URL from the bucket.' };
+      }
+
+      return { url: urlData.publicUrl, error: null };
+    } catch (err: any) {
       console.error('Supabase upload error:', err);
-      return null;
+      return { url: null, error: err?.message || 'Unknown network error during upload.' };
     }
   };
 
@@ -221,12 +229,12 @@ export default function AdminDashboard() {
       if (file.type.startsWith('image/')) {
         // Upload image directly
         if (isSupabaseConfigured) {
-          const publicUrl = await uploadFileToSupabase(file, `thumbnails/${fileName}`);
+          const { url: publicUrl, error: uploadError } = await uploadFileToSupabase(file, `thumbnails/${fileName}`);
           if (publicUrl) {
             setImage(publicUrl);
             triggerToast('Thumbnail uploaded to Cloud Storage! ✔');
           } else {
-            setFormError('Cloud upload failed. Checking bucket parameters.');
+            setFormError(`Cloud upload failed: ${uploadError}`);
           }
         } else {
           // Local base64 fallback for testing before configuring Supabase
@@ -242,7 +250,7 @@ export default function AdminDashboard() {
       } else if (file.type.startsWith('video/')) {
         // Handle Video Upload
         if (isSupabaseConfigured) {
-          const publicUrl = await uploadFileToSupabase(file, `videos/${fileName}`);
+          const { url: publicUrl, error: uploadError } = await uploadFileToSupabase(file, `videos/${fileName}`);
           if (publicUrl) {
             setVideoFileUrl(publicUrl);
             setCategory('video');
@@ -254,17 +262,20 @@ export default function AdminDashboard() {
               if (frameBase64) {
                 const blob = base64ToBlob(frameBase64, 'image/jpeg');
                 const thumbnailName = `thumb-${uniqueId}.jpg`;
-                const thumbUrl = await uploadFileToSupabase(blob, `thumbnails/${thumbnailName}`);
+                const { url: thumbUrl, error: thumbError } = await uploadFileToSupabase(blob, `thumbnails/${thumbnailName}`);
                 if (thumbUrl) {
                   setImage(thumbUrl);
                   triggerToast('Thumbnail generated and uploaded to Cloud! ✔');
+                } else {
+                  console.error('Failed to upload generated thumbnail:', thumbError);
+                  triggerToast(`Video uploaded, but thumbnail generation failed: ${thumbError}`);
                 }
               }
             } catch (err) {
               console.error('Failed to generate thumbnail frame:', err);
             }
           } else {
-            setFormError('Video cloud upload failed.');
+            setFormError(`Video cloud upload failed: ${uploadError}`);
           }
         } else {
           // Local base64 fallback
@@ -411,10 +422,12 @@ export default function AdminDashboard() {
         triggerToast('Project deleted successfully.');
         fetchProjects();
       } else {
-        triggerToast('Delete request failed.');
+        const data = await res.json().catch(() => ({}));
+        triggerToast(`Delete request failed: ${data.error || res.statusText || 'Unknown error'}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      triggerToast(`Delete request failed: ${e.message || e}`);
     }
   };
 
