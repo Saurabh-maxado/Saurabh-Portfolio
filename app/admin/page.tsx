@@ -187,34 +187,25 @@ export default function AdminDashboard() {
   };
 
   const uploadFileToSupabase = async (file: File | Blob, path: string): Promise<{ url: string | null; error: string | null }> => {
-    if (!isSupabaseConfigured) {
-      return { url: null, error: 'Supabase is not configured' };
-    }
     try {
-      const { data, error } = await supabase.storage
-        .from('portfolio-media')
-        .upload(path, file, { upsert: true });
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('path', path);
 
-      if (error) {
-        return { url: null, error: error.message || JSON.stringify(error) };
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        return { url: data.url, error: null };
+      } else {
+        return { url: null, error: data.error || 'Upload failed' };
       }
-
-      if (!data) {
-        return { url: null, error: 'Upload succeeded but returned no response data.' };
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('portfolio-media')
-        .getPublicUrl(data.path);
-
-      if (!urlData || !urlData.publicUrl) {
-        return { url: null, error: 'Failed to retrieve public URL from the bucket.' };
-      }
-
-      return { url: urlData.publicUrl, error: null };
     } catch (err: any) {
-      console.error('Supabase upload error:', err);
-      return { url: null, error: err?.message || 'Unknown network error during upload.' };
+      console.error('Supabase upload error via server:', err);
+      return { url: null, error: err?.message || 'Unknown network error during server upload.' };
     }
   };
 
@@ -227,75 +218,42 @@ export default function AdminDashboard() {
       const fileName = `${uniqueId}.${fileExt}`;
 
       if (file.type.startsWith('image/')) {
-        // Upload image directly
-        if (isSupabaseConfigured) {
-          const { url: publicUrl, error: uploadError } = await uploadFileToSupabase(file, `thumbnails/${fileName}`);
-          if (publicUrl) {
-            setImage(publicUrl);
-            triggerToast('Thumbnail uploaded to Cloud Storage! ✔');
-          } else {
-            setFormError(`Cloud upload failed: ${uploadError}`);
-          }
+        // Upload image
+        const { url: publicUrl, error: uploadError } = await uploadFileToSupabase(file, `thumbnails/${fileName}`);
+        if (publicUrl) {
+          setImage(publicUrl);
+          triggerToast('Thumbnail uploaded to Cloud Storage! ✔');
         } else {
-          // Local base64 fallback for testing before configuring Supabase
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            if (e.target?.result) {
-              setImage(e.target.result as string);
-              triggerToast('Local base64 fallback loaded. (Supabase not configured)');
-            }
-          };
-          reader.readAsDataURL(file);
+          setFormError(`Cloud upload failed: ${uploadError}`);
         }
       } else if (file.type.startsWith('video/')) {
         // Handle Video Upload
-        if (isSupabaseConfigured) {
-          const { url: publicUrl, error: uploadError } = await uploadFileToSupabase(file, `videos/${fileName}`);
-          if (publicUrl) {
-            setVideoFileUrl(publicUrl);
-            setCategory('video');
-            triggerToast('Video uploaded to Cloud Storage! Generating thumbnail... 📽');
-            
-            // Extract and upload thumbnail frame
-            try {
-              const frameBase64 = await extractVideoFrame(publicUrl);
-              if (frameBase64) {
-                const blob = base64ToBlob(frameBase64, 'image/jpeg');
-                const thumbnailName = `thumb-${uniqueId}.jpg`;
-                const { url: thumbUrl, error: thumbError } = await uploadFileToSupabase(blob, `thumbnails/${thumbnailName}`);
-                if (thumbUrl) {
-                  setImage(thumbUrl);
-                  triggerToast('Thumbnail generated and uploaded to Cloud! ✔');
-                } else {
-                  console.error('Failed to upload generated thumbnail:', thumbError);
-                  triggerToast(`Video uploaded, but thumbnail generation failed: ${thumbError}`);
-                }
+        const { url: publicUrl, error: uploadError } = await uploadFileToSupabase(file, `videos/${fileName}`);
+        if (publicUrl) {
+          setVideoFileUrl(publicUrl);
+          setCategory('video');
+          triggerToast('Video uploaded to Cloud Storage! Generating thumbnail... 📽');
+          
+          // Extract and upload thumbnail frame
+          try {
+            const frameBase64 = await extractVideoFrame(publicUrl);
+            if (frameBase64) {
+              const blob = base64ToBlob(frameBase64, 'image/jpeg');
+              const thumbnailName = `thumb-${uniqueId}.jpg`;
+              const { url: thumbUrl, error: thumbError } = await uploadFileToSupabase(blob, `thumbnails/${thumbnailName}`);
+              if (thumbUrl) {
+                setImage(thumbUrl);
+                triggerToast('Thumbnail generated and uploaded to Cloud! ✔');
+              } else {
+                console.error('Failed to upload generated thumbnail:', thumbError);
+                triggerToast(`Video uploaded, but thumbnail generation failed: ${thumbError}`);
               }
-            } catch (err) {
-              console.error('Failed to generate thumbnail frame:', err);
             }
-          } else {
-            setFormError(`Video cloud upload failed: ${uploadError}`);
+          } catch (err) {
+            console.error('Failed to generate thumbnail frame:', err);
           }
         } else {
-          // Local base64 fallback
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            if (e.target?.result) {
-              const videoDataUrl = e.target.result as string;
-              setVideoFileUrl(videoDataUrl);
-              setCategory('video');
-              triggerToast('Video file loaded! Generating thumbnail... 📽');
-              
-              try {
-                const frame = await extractVideoFrame(videoDataUrl);
-                if (frame) setImage(frame);
-              } catch (err) {
-                console.error(err);
-              }
-            }
-          };
-          reader.readAsDataURL(file);
+          setFormError(`Video cloud upload failed: ${uploadError}`);
         }
       } else {
         setFormError('Invalid file format. Select an image or video file.');
