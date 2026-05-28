@@ -19,19 +19,10 @@ import {
   Instagram, 
   Menu, 
   X, 
-  Plus, 
-  Trash2, 
   Sparkles, 
-  Check, 
-  Upload, 
-  Sliders, 
-  Layers, 
   ArrowUpRight,
-  Folder,
   Lock,
-  Unlock,
-  LogIn,
-  LogOut
+  Sliders
 } from 'lucide-react';
 
 interface PortfolioItem {
@@ -44,227 +35,13 @@ interface PortfolioItem {
   tags: string[];
 }
 
-const DEFAULT_PORTFOLIO: PortfolioItem[] = [];
-
-const safeLocalStorage = {
-  getItem: (key: string): string | null => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key);
-      }
-    } catch (e) {
-      console.warn('localStorage is blocked or unavailable:', e);
-    }
-    return null;
-  },
-  setItem: (key: string, value: string): void => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(key, value);
-      }
-    } catch (e) {
-      console.warn('localStorage is blocked or unavailable:', e);
-    }
-  },
-  removeItem: (key: string): void => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(key);
-      }
-    } catch (e) {
-      console.warn('localStorage is blocked or unavailable:', e);
-    }
-  }
-};
-
-// High-capacity IndexedDB Database Helper for large uploads (videos, audio, heavy base64 graphics)
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined' || !window.indexedDB) {
-      reject(new Error('IndexedDB not supported or server-side rendering scope'));
-      return;
-    }
-    const request = window.indexedDB.open('SaurabhPortfolioDB', 1);
-    request.onupgradeneeded = (event: any) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('portfolio')) {
-        db.createObjectStore('portfolio');
-      }
-    };
-    request.onsuccess = (event: any) => {
-      resolve(event.target.result);
-    };
-    request.onerror = (event: any) => {
-      reject(event.target.error);
-    };
-  });
-};
-
-const dbGet = <T extends unknown>(key: string): Promise<T | null> => {
-  return openDB()
-    .then((db) => {
-      return new Promise<T | null>((resolve, reject) => {
-        const transaction = db.transaction('portfolio', 'readonly');
-        const store = transaction.objectStore('portfolio');
-        const request = store.get(key);
-        request.onsuccess = () => {
-          resolve(request.result || null);
-        };
-        request.onerror = () => {
-          reject(request.error);
-        };
-      });
-    })
-    .catch((err) => {
-      console.warn('IndexedDB read failed, falling back:', err);
-      return null;
-    });
-};
-
-const dbSet = <T extends unknown>(key: string, value: T): Promise<void> => {
-  return openDB()
-    .then((db) => {
-      return new Promise<void>((resolve, reject) => {
-        const transaction = db.transaction('portfolio', 'readwrite');
-        const store = transaction.objectStore('portfolio');
-        const request = store.put(value, key);
-        request.onsuccess = () => {
-          resolve();
-        };
-        request.onerror = () => {
-          reject(request.error);
-        };
-      });
-    })
-    .catch((err) => {
-      console.warn('IndexedDB write failed:', err);
-    });
-};
-
-const dbRemove = (key: string): Promise<void> => {
-  return openDB()
-    .then((db) => {
-      return new Promise<void>((resolve, reject) => {
-        const transaction = db.transaction('portfolio', 'readwrite');
-        const store = transaction.objectStore('portfolio');
-        const request = store.delete(key);
-        request.onsuccess = () => {
-          resolve();
-        };
-        request.onerror = () => {
-          reject(request.error);
-        };
-      });
-    })
-    .catch((err) => {
-      console.warn('IndexedDB delete failed:', err);
-    });
-};
-
 export default function Home() {
   const [hasMounted, setHasMounted] = useState(false);
-  // Admin Mode States
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    try {
-      const saved = safeLocalStorage.getItem('saurabh_portfolio_is_admin');
-      return saved === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [adminPasswordInput, setAdminPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState<string | null>(null);
-
-  // Mobile navigation open state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'web' | 'design' | 'video'>('all');
-
-  // Portfolio items state, loading from IndexedDB / LocalStorage if present
-  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>(() => {
-    try {
-      const savedLocal = safeLocalStorage.getItem('saurabh_portfolio_items');
-      if (savedLocal) {
-        const items = JSON.parse(savedLocal);
-        if (Array.isArray(items) && items.length > 0) {
-          return items;
-        }
-      }
-    } catch (e) {
-      console.warn('Error fetching initial portfolio items:', e);
-    }
-    return DEFAULT_PORTFOLIO;
-  });
+  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
-
-  // Manage Showcase Panel status
-  const [customizerOpen, setCustomizerOpen] = useState(false);
-
-  // New Project Form Inputs initialized with lazy initial state from safe draft storage
-  const [newTitle, setNewTitle] = useState<string>(() => {
-    try {
-      const savedDraft = safeLocalStorage.getItem('saurabh_draft_portfolio_item');
-      if (savedDraft) {
-        return JSON.parse(savedDraft).title || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-  const [newDesc, setNewDesc] = useState<string>(() => {
-    try {
-      const savedDraft = safeLocalStorage.getItem('saurabh_draft_portfolio_item');
-      if (savedDraft) {
-        return JSON.parse(savedDraft).desc || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-  const [newCategory, setNewCategory] = useState<'web' | 'design' | 'video'>(() => {
-    try {
-      const savedDraft = safeLocalStorage.getItem('saurabh_draft_portfolio_item');
-      if (savedDraft) {
-        return JSON.parse(savedDraft).category || 'web';
-      }
-    } catch (e) {}
-    return 'web';
-  });
-  const [newImage, setNewImage] = useState<string>(() => {
-    try {
-      const savedDraft = safeLocalStorage.getItem('saurabh_draft_portfolio_item');
-      if (savedDraft) {
-        return JSON.parse(savedDraft).image || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-  const [newLink, setNewLink] = useState<string>(() => {
-    try {
-      const savedDraft = safeLocalStorage.getItem('saurabh_draft_portfolio_item');
-      if (savedDraft) {
-        return JSON.parse(savedDraft).link || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-  const [newTagsString, setNewTagsString] = useState<string>(() => {
-    try {
-      const savedDraft = safeLocalStorage.getItem('saurabh_draft_portfolio_item');
-      if (savedDraft) {
-        return JSON.parse(savedDraft).tagsString || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-  const [newVideoFile, setNewVideoFile] = useState<string>(() => {
-    try {
-      const savedDraft = safeLocalStorage.getItem('saurabh_draft_portfolio_item');
-      if (savedDraft) {
-        return JSON.parse(savedDraft).videoFile || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-  const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Contact Form Inputs
   const [contactName, setContactName] = useState('');
@@ -273,321 +50,32 @@ export default function Home() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [formFeedback, setFormFeedback] = useState<string | null>(null);
 
-  // Toast State for actions feedback
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
   // Scroll variables for parallax background bubbles
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollY } = useScroll();
   const bgBubbleY1 = useTransform(scrollY, [0, 1000], [0, -100]);
   const bgBubbleY2 = useTransform(scrollY, [0, 1000], [0, 80]);
 
-  // Load portfolio from safe localStorage immediately on mount, and try high-capacity IndexedDB async with fallback timeout
   useEffect(() => {
-    let active = true;
+    setHasMounted(true);
 
-    // Set hasMounted asynchronously via microtask to comply with set-state-in-effect lint guidelines
-    Promise.resolve().then(() => {
-      if (active) {
-        setHasMounted(true);
-      }
-    });
-
-    // A helper to impose a strict timeout on potentially pending/stuck IndexedDB promises inside partitioned iframe contexts
-    const withTimeout = <T extends unknown>(promise: Promise<T>, ms: number): Promise<T> => {
-      let timer: NodeJS.Timeout;
-      const timeoutPromise = new Promise<T>((_, reject) => {
-        timer = setTimeout(() => {
-          reject(new Error('IndexedDB execution timed out within iframe runtime.'));
-        }, ms);
-      });
-      return Promise.race([promise, timeoutPromise]).then((res) => {
-        clearTimeout(timer);
-        return res;
-      }, (err) => {
-        clearTimeout(timer);
-        throw err;
-      });
-    };
-
-    // Query IndexedDB asynchronously in a non-blocking background task
-    const loadFromIndexedDB = async () => {
+    const fetchProjects = async () => {
       try {
-        const idbItems = await withTimeout(dbGet<PortfolioItem[]>('saurabh_portfolio_items'), 250);
-        if (idbItems && Array.isArray(idbItems) && active) {
-          setPortfolioItems(idbItems);
+        const res = await fetch('/api/projects');
+        if (res.ok) {
+          const data = await res.json();
+          setPortfolioItems(data);
         }
-      } catch (e) {
-        console.info('IndexedDB list load timed out or sandboxed, using localStorage state cache completely:', e);
+      } catch (err) {
+        console.error('Failed to fetch projects:', err);
+      } finally {
+        setLoading(false);
       }
-
-      try {
-        const idbDraft = await withTimeout(dbGet<any>('saurabh_draft_portfolio_item'), 250);
-        if (idbDraft && active) {
-          if (idbDraft.title) setNewTitle(idbDraft.title);
-          if (idbDraft.desc) setNewDesc(idbDraft.desc);
-          if (idbDraft.category) setNewCategory(idbDraft.category);
-          if (idbDraft.image) setNewImage(idbDraft.image);
-          if (idbDraft.link) setNewLink(idbDraft.link);
-          if (idbDraft.tagsString) setNewTagsString(idbDraft.tagsString);
-          if (idbDraft.videoFile) setNewVideoFile(idbDraft.videoFile);
-        }
-      } catch (e) {}
     };
 
-    loadFromIndexedDB();
-
-    return () => {
-      active = false;
-    };
+    fetchProjects();
   }, []);
 
-  // Save to IndexedDB (and best-effort localStorage fallback) whenever items change
-  const savePortfolio = (items: PortfolioItem[]) => {
-    setPortfolioItems(items);
-    
-    // Save to IndexedDB (Up to hundreds of MB space, perfectly stores heavy base64 data)
-    dbSet('saurabh_portfolio_items', items);
-
-    // Save to localStorage best-effort (fails silently if quota is exceeded due to giant base64s)
-    try {
-      safeLocalStorage.setItem('saurabh_portfolio_items', JSON.stringify(items));
-    } catch (e) {
-      console.warn('LocalStorage limit exceeded, falling back to database engine:', e);
-    }
-  };
-
-  // Save product draft to IndexedDB (and best-effort localStorage) automatically as the user types
-  useEffect(() => {
-    if (!hasMounted) return;
-    const draft = {
-      title: newTitle,
-      desc: newDesc,
-      category: newCategory,
-      image: newImage,
-      link: newLink,
-      tagsString: newTagsString,
-      videoFile: newVideoFile,
-    };
-    const allEmpty = !newTitle && !newDesc && !newImage && !newLink && !newTagsString && !newVideoFile;
-    if (allEmpty) {
-      try {
-        safeLocalStorage.removeItem('saurabh_draft_portfolio_item');
-      } catch (e) {}
-      dbRemove('saurabh_draft_portfolio_item');
-    } else {
-      try {
-        safeLocalStorage.setItem('saurabh_draft_portfolio_item', JSON.stringify(draft));
-      } catch (e) {
-        // Safe to ignore as IndexedDB covers the high capacity write
-      }
-      dbSet('saurabh_draft_portfolio_item', draft);
-    }
-  }, [newTitle, newDesc, newCategory, newImage, newLink, newTagsString, newVideoFile, hasMounted]);
-
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
-  };
-
-  // Sync isAdmin state to localStorage
-  useEffect(() => {
-    if (isAdmin) {
-      safeLocalStorage.setItem('saurabh_portfolio_is_admin', 'true');
-    } else {
-      safeLocalStorage.removeItem('saurabh_portfolio_is_admin');
-    }
-  }, [isAdmin]);
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const correctPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
-    if (adminPasswordInput === correctPassword) {
-      setIsAdmin(true);
-      setIsLoginOpen(false);
-      setAdminPasswordInput('');
-      setLoginError(null);
-      triggerToast('Welcome Saurabh! Admin mode active. 🚀');
-    } else {
-      setLoginError('Invalid administrator credentials.');
-    }
-  };
-
-  const handleLogout = () => {
-    setIsAdmin(false);
-    setCustomizerOpen(false);
-    triggerToast('Logged out of admin mode.');
-  };
-
-  // Helper to extract a representative frame from an uploaded video file
-  const extractVideoFrame = (videoUrl: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      video.src = videoUrl;
-      video.crossOrigin = 'anonymous';
-      video.muted = true;
-      video.playsInline = true;
-      video.currentTime = 0.5; // Seek into the video a bit to avoid black screen
-
-      video.onseeked = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = 640;
-          canvas.height = 360;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.8));
-          } else {
-            resolve('');
-          }
-        } catch (err) {
-          console.error('Error drawing video frame to canvas:', err);
-          resolve('');
-        }
-      };
-
-      video.onerror = () => {
-        resolve('');
-      };
-    });
-  };
-
-  // Drag and Drop files upload handler
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const processUploadedFile = (file: File) => {
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setNewImage(event.target.result as string);
-          triggerToast('Thumbnail image uploaded successfully! ✔');
-        }
-      };
-      reader.readAsDataURL(file);
-    } else if (file.type.startsWith('video/')) {
-      if (file.size > 12 * 1024 * 1024) {
-        triggerToast('Video file size is over 12MB. Processing may take some time!');
-      }
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        if (event.target?.result) {
-          const videoDataUrl = event.target.result as string;
-          setNewVideoFile(videoDataUrl);
-          setNewCategory('video'); // Auto-select video editing category
-          triggerToast('Video file uploaded! Generating thumbnail frame... 📽');
-          
-          try {
-            const frame = await extractVideoFrame(videoDataUrl);
-            if (frame) {
-              setNewImage(frame);
-              triggerToast('Video thumbnail generated from first frame! ✔');
-            }
-          } catch (err) {
-            console.error('Error generating frame:', err);
-          }
-        }
-      };
-      reader.readAsDataURL(file);
-    } else {
-      triggerToast('Unsupported style format! Select an image or video file.');
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processUploadedFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processUploadedFile(e.target.files[0]);
-    }
-  };
-
-  // Add Item to state and localStorage
-  const handleAddProject = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim() || !newDesc.trim()) {
-      triggerToast('Please fill out the Title and Description.');
-      return;
-    }
-
-    // Default placeholder thumbnail if none uploaded
-    let finalImg = newImage;
-    if (!finalImg) {
-      if (newCategory === 'video' && newLink) {
-        const linkStr = newLink.trim();
-        // YouTube ID extraction
-        const ytReg = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-        const ytMatch = linkStr.match(ytReg);
-        if (ytMatch && ytMatch[2].length === 11) {
-          finalImg = `https://img.youtube.com/vi/${ytMatch[2]}/0.jpg`;
-        } else if (linkStr.includes('drive.google.com')) {
-          finalImg = 'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=600&auto=format&fit=crop'; // Abstract cinema artwork
-        } else {
-          finalImg = 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=600&auto=format&fit=crop'; // Cinematic camera look
-        }
-      } else {
-        const seed = Math.floor(Math.random() * 1000);
-        finalImg = `https://picsum.photos/seed/${seed}/600/400`;
-      }
-    }
-
-    const newItem: PortfolioItem = {
-      id: `${newCategory}-${Date.now()}`,
-      title: newTitle.trim(),
-      description: newDesc.trim(),
-      category: newCategory,
-      image: finalImg,
-      link: (newCategory === 'video' && newVideoFile) ? newVideoFile : (newLink.trim() || undefined),
-      tags: newTagsString
-        ? newTagsString.split(',').map(t => t.trim()).filter(Boolean)
-        : [newCategory === 'web' ? 'Web Dev' : newCategory === 'design' ? 'Graphic' : 'Video Edit']
-    };
-
-    const updated = [newItem, ...portfolioItems];
-    savePortfolio(updated);
-    triggerToast(`"${newTitle}" added successfully!`);
-
-    // Reset Form Fields
-    setNewTitle('');
-    setNewDesc('');
-    setNewImage('');
-    setNewLink('');
-    setNewTagsString('');
-    setNewVideoFile('');
-  };
-
-  // Remove Project from showcase
-  const handleRemoveProject = (id: string) => {
-    const updated = portfolioItems.filter(item => item.id !== id);
-    savePortfolio(updated);
-    triggerToast('Project removed successfully.');
-  };
-
-  // Reset to default portfolio data
-  const handleResetDefaults = () => {
-    if (confirm('Are you sure you want to revert to the default creative showcase? All custom projects will be cleared.')) {
-      savePortfolio(DEFAULT_PORTFOLIO);
-      triggerToast('Showcase reverted to beautiful defaults.');
-    }
-  };
-
-  // Submit Contact Form handler
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()) {
@@ -610,20 +98,11 @@ export default function Home() {
     }, 1800);
   };
 
-  // Parse YouTube video ID from URL for embed player
-  const getYoutubeEmbedUrl = (url?: string) => {
-    if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : null;
-  };
-
-  // Support YouTube, Google Drive, Vimeo, and direct links
   const getVideoEmbedUrl = (url?: string) => {
     if (!url) return null;
     const s = url.trim();
 
-    // YouTube regex (matching standard watch URLs, shorts, embed URLs, youtu.be, etc.)
+    // YouTube regex
     const ytReg = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const ytMatch = s.match(ytReg);
     if (ytMatch && ytMatch[2].length === 11) {
@@ -637,17 +116,16 @@ export default function Home() {
       return { type: 'drive', url: `https://drive.google.com/file/d/${gdMatch[1]}/preview` };
     }
 
-    // Direct video link (mp4, webm, ogg, mov)
+    // Direct video link
     if (/\.(mp4|webm|ogg|mov)(?:\?|$)/i.test(s) || s.startsWith('data:video/')) {
       return { type: 'direct', url: s };
     }
 
-    // Fallback if it contains iframe, embed, or vimeo
+    // Fallback if it contains iframe or vimeo
     if (s.includes('iframe') || s.includes('embed') || s.includes('player.vimeo.com')) {
       return { type: 'iframe', url: s };
     }
 
-    // General link fallback as iframe if it starts with http/https
     if (s.startsWith('http://') || s.startsWith('https://')) {
       return { type: 'iframe', url: s };
     }
@@ -685,22 +163,6 @@ export default function Home() {
         <div className="absolute bottom-[5%] right-[5%] w-[350px] h-[350px] bg-indigo-500/5 rounded-full filter blur-[90px]" />
       </div>
 
-      {/* Persistent Action-Feedback Toast Notification */}
-      <AnimatePresence>
-        {toastMessage && (
-          <motion.div
-            id="toast-notification"
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-lg border border-purple-accent/30 bg-black/90 text-sm font-medium shadow-[0_0_30px_rgba(168,85,247,0.2)]"
-          >
-            <Sparkles className="w-4 h-4 text-electric-blue animate-pulse" />
-            <span>{toastMessage}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Navigation Header */}
       <header id="portfolio-header" className="sticky top-0 z-40 w-full border-b border-white/[0.05] bg-[#050508]/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 sm:px-8 h-20 flex items-center justify-between">
@@ -727,23 +189,6 @@ export default function Home() {
             <a href="#portfolio" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">Portfolio</a>
             <a href="#contact" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">Contact</a>
           </nav>
-
-          {/* Social Links & Sandbox Trigger */}
-          {isAdmin && (
-            <div id="header-social-hub" className="hidden md:flex items-center gap-4">
-              <button 
-                id="sandbox-header-toggle"
-                onClick={() => {
-                  setCustomizerOpen(true);
-                  triggerToast('Customizer sandbox loaded. 🛠');
-                }}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-full border border-[#00ecff]/25 text-[#00ecff] bg-electric-blue/5 hover:bg-electric-blue/10 transition-all shadow-[0_0_15px_rgba(0,236,255,0.05)]"
-              >
-                <Sliders className="w-3 h-3 animate-spin-[spin_3s_linear_infinite]" />
-                <span>Modify Portfolio</span>
-              </button>
-            </div>
-          )}
 
           {/* Mobile Menu Toggle Button */}
           <button 
@@ -803,19 +248,6 @@ export default function Home() {
                     <Linkedin className="w-5 h-5" />
                   </a>
                 </div>
-                {isAdmin && (
-                  <button 
-                    id="mobile-sandbox-toggle"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      setCustomizerOpen(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-full border border-electric-blue/20 text-[#00ecff] bg-electric-blue/5"
-                  >
-                    <Sliders className="w-3 h-3" />
-                    <span>Modify Showcase</span>
-                  </button>
-                )}
               </div>
             </motion.div>
           )}
@@ -849,54 +281,38 @@ export default function Home() {
               id="hero-main-title"
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.15 }}
-              className="text-5xl sm:text-7xl lg:text-8xl font-display font-black tracking-tight leading-tight text-white"
+              transition={{ duration: 0.8, delay: 0.1 }}
+              className="text-4xl sm:text-6xl md:text-7xl font-display font-black tracking-tight text-white leading-[1.1] max-w-4xl"
             >
-              Designing Pixels.<br />
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-electric-blue via-violet-400 to-purple-accent glow-text-blue">
-                Engineering Code.
-              </span>
+              Building Seamless <span className="bg-gradient-to-r from-electric-blue to-purple-accent bg-clip-text text-transparent glow-text-blue">Digital Ecosystems</span>
             </motion.h1>
 
-            {/* Multi-Discipline Tagline */}
             <motion.p 
-              id="hero-tagline"
+              id="hero-subtext"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="text-gray-400 text-base sm:text-lg md:text-xl mt-8 max-w-2xl leading-relaxed font-sans"
+            >
+              Bridge the critical gap between pixel layouts, fluid motion compilations, and scalable database integrations.
+            </motion.p>
+
+            <motion.div 
+              id="hero-action-buttons"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.3 }}
-              className="mt-8 text-xl sm:text-2xl font-semibold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-slate-200 to-slate-400"
-            >
-              Web Developer <span className="text-purple-accent font-light">|</span> Graphic Designer <span className="text-purple-accent font-light">|</span> Video Editor
-            </motion.p>
-
-            {/* Hero Short Bio */}
-            <motion.p 
-              id="hero-bio"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.45 }}
-              className="mt-6 text-gray-400 max-w-2xl text-md sm:text-base leading-relaxed font-sans"
-            >
-              Hi, I&apos;m Saurabh. I bring ideas to life through code, design and visual storytelling. Whether it&apos;s launching clean user-centric software, developing identities, or editing videos, I engineer high-end digital experiences.
-            </motion.p>
-
-            {/* Action CTAs */}
-            <motion.div 
-              id="hero-actions"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.6 }}
-              className="mt-10 flex flex-col sm:flex-row gap-4 justify-center w-full sm:w-auto"
+              className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-12 w-full sm:w-auto"
             >
               <a 
                 href="#portfolio" 
-                className="px-8 py-4 rounded-xl font-semibold bg-gradient-to-r from-electric-blue to-purple-accent text-black hover:opacity-90 transform hover:-translate-y-0.5 active:translate-y-0 transition-all font-display text-center shadow-lg shadow-electric-blue/15"
+                className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold bg-gradient-to-r from-electric-blue to-purple-accent text-black hover:opacity-90 transform hover:-translate-y-0.5 active:translate-y-0 transition-all font-display text-center shadow-lg shadow-electric-blue/10"
               >
                 View My Work
               </a>
               <a 
                 href="#contact" 
-                className="px-8 py-4 rounded-xl font-semibold bg-[#0e0e16]/80 border border-white/[0.08] text-white hover:bg-white/[0.05] transform hover:-translate-y-0.5 active:translate-y-0 transition-all font-display text-center"
+                className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold bg-[#0e0e16]/80 border border-white/[0.08] text-white hover:bg-white/[0.05] transform hover:-translate-y-0.5 active:translate-y-0 transition-all font-display text-center"
               >
                 Contact Me
               </a>
@@ -1057,13 +473,13 @@ export default function Home() {
                     <Code className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-display font-black text-white">Web Development</h3>
-                  <p className="text-sm text-gray-400 mt-4 leading-relaxed">
-                    Building responsive, high-speed single page applications. Structuring cleanly documented React structures, custom state integration, and fast micro-interactions.
+                  <p className="text-sm text-gray-400 mt-4 leading-relaxed font-sans">
+                    Structured Next.js structures, state hooks, responsive styling, API routing, and backend integrations built for speed.
                   </p>
                 </div>
 
                 <div className="mt-8 flex items-center gap-2 text-xs font-mono font-bold text-blue-400">
-                  <span>HTML // CSS // JS // TS</span>
+                  <span>REACT // NEXT.JS // NODE.JS</span>
                 </div>
               </motion.div>
 
@@ -1084,8 +500,8 @@ export default function Home() {
                     <Palette className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-display font-black text-white">Graphic Design</h3>
-                  <p className="text-sm text-gray-400 mt-4 leading-relaxed">
-                    Drafting stellar social media visuals, brand marketing identities, layout typography systems, vector mockups, and publication media.
+                  <p className="text-sm text-gray-400 mt-4 leading-relaxed font-sans">
+                    Brand guidelines, aesthetic layouts, promotional mockups, vector artwork assets, and UI styles with striking impact.
                   </p>
                 </div>
 
@@ -1111,7 +527,7 @@ export default function Home() {
                     <Video className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-display font-black text-white">Video Editing</h3>
-                  <p className="text-sm text-gray-400 mt-4 leading-relaxed">
+                  <p className="text-sm text-gray-400 mt-4 leading-relaxed font-sans">
                     Cinematic montage assembly, fluid pacing transitions, sound syncing, color grading, multi-cam timeline management, and sound enhancement.
                   </p>
                 </div>
@@ -1133,7 +549,7 @@ export default function Home() {
         >
           <div className="max-w-6xl mx-auto">
             
-            {/* Header with customization trigger */}
+            {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
               <div>
                 <span className="text-xs font-mono font-bold tracking-widest text-[#00ecff] uppercase">Featured Showcase</span>
@@ -1144,20 +560,6 @@ export default function Home() {
                   Filter by craft layout to explore code repositories, vector posters, or premium edits.
                 </p>
               </div>
-
-              {/* Modify Showcase Trigger on UI */}
-              {isAdmin && (
-                <motion.button
-                  id="modify-showcase-btn"
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setCustomizerOpen(true)}
-                  className="flex items-center gap-2 px-5 py-3 rounded-xl border border-[#00ecff]/30 text-xs font-semibold text-[#00ecff] bg-electric-blue/5 hover:bg-electric-blue/10 transition-all cursor-pointer shadow-[0_0_20px_rgba(0,236,255,0.06)]"
-                >
-                  <Sliders className="w-4 h-4 text-electric-blue animate-pulse" />
-                  <span>Customize Portfolio Grid</span>
-                </motion.button>
-              )}
             </div>
 
             {/* Tab Controllers */}
@@ -1232,415 +634,147 @@ export default function Home() {
               })()}
             </AnimatePresence>
 
-            {/* Projects Grid Grid */}
-            <motion.div 
-              id="portfolio-grid"
-              layout
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-            >
-              <AnimatePresence mode="popLayout">
-                {filteredItems.map(item => (
-                  <motion.div
-                    key={item.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.4 }}
-                    className="group rounded-2xl border border-white/[0.05] bg-[#0c0c14] overflow-hidden flex flex-col justify-between h-[420px] relative transition-all hover:border-[#00ecff]/30 hover:shadow-[0_0_30px_rgba(0,236,255,0.08)]"
-                  >
-                    {/* Upper Thumbnail Area */}
-                    <div className="relative h-48 w-full overflow-hidden bg-[#09090f] flex items-center justify-center">
-                      {/* Check if thumbnail is a raw base64 or normal url */}
-                      <img 
-                        src={item.image} 
-                        alt={item.title}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        onError={(e) => {
-                          // Fallback custom graphics
-                          (e.target as any).src = 'https://picsum.photos/seed/fallback/600/400';
-                        }}
-                      />
-                      
-                      {/* Hover Overlay Visual Indicator */}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
-                        {item.category === 'video' ? (
-                          <button 
-                            onClick={() => setSelectedVideo(item.link || '#')}
-                            className="p-3.5 rounded-full bg-indigo-500 text-white font-semibold transition-all hover:scale-110 shadow-lg"
-                          >
-                            <Video className="w-5 h-5 fill-current" />
-                          </button>
-                        ) : item.category === 'web' && item.link ? (
-                          <a 
-                            href={item.link} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="p-3.5 rounded-full bg-blue-500 text-white font-semibold transition-all hover:scale-110 shadow-lg"
-                          >
-                            <ExternalLink className="w-5 h-5" />
-                          </a>
-                        ) : (
-                          <span className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-xs font-mono font-bold text-white uppercase tracking-wider">
-                            Design Showcase
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Hover dynamic tag label */}
-                      <span className={`absolute top-4 left-4 text-[10px] font-mono font-bold tracking-widest uppercase px-2.5 py-1 rounded border ${
-                        item.category === 'web' 
-                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
-                          : item.category === 'design' 
-                          ? 'bg-purple-accent/10 text-purple-accent border-purple-accent/20' 
-                          : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
-                      }`}>
-                        {item.category === 'web' ? 'Web' : item.category === 'design' ? 'Design' : 'Video'}
-                      </span>
-                    </div>
-
-                    {/* Lower Card Info */}
-                    <div className="p-6 flex-1 flex flex-col justify-between bg-[#0e0e18]">
-                      <div>
-                        <h3 className="text-lg font-display font-black text-white group-hover:text-electric-blue duration-300">
-                          {item.title}
-                        </h3>
-                        <p className="text-xs text-gray-400 mt-2 line-clamp-3 leading-relaxed font-sans">
-                          {item.description}
-                        </p>
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {item.tags.map((tag, idx) => (
-                            <span key={idx} className="text-[10px] sm:text-[11px] font-mono text-gray-500">
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Action Link Row */}
-                        <div className="flex items-center justify-between border-t border-white/[0.04] pt-3">
+            {/* Projects Grid */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-10 h-10 border-4 border-electric-blue border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm font-mono text-gray-500 mt-4">Loading project archive...</span>
+              </div>
+            ) : (
+              <motion.div 
+                id="portfolio-grid"
+                layout
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                <AnimatePresence mode="popLayout">
+                  {filteredItems.map(item => (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.4 }}
+                      className="group rounded-2xl border border-white/[0.05] bg-[#0c0c14] overflow-hidden flex flex-col justify-between h-[420px] relative transition-all hover:border-[#00ecff]/30 hover:shadow-[0_0_30px_rgba(0,236,255,0.08)]"
+                    >
+                      {/* Upper Thumbnail Area */}
+                      <div className="relative h-48 w-full overflow-hidden bg-[#09090f] flex items-center justify-center">
+                        <img 
+                          src={item.image} 
+                          alt={item.title}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          onError={(e) => {
+                            (e.target as any).src = 'https://picsum.photos/seed/fallback/600/400';
+                          }}
+                        />
+                        
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
                           {item.category === 'video' ? (
                             <button 
                               onClick={() => setSelectedVideo(item.link || '#')}
-                              className="text-xs font-semibold text-indigo-300 hover:text-indigo-400 flex items-center gap-1.5"
+                              className="p-3.5 rounded-full bg-indigo-500 text-white font-semibold transition-all hover:scale-110 shadow-lg cursor-pointer"
                             >
-                              <span>Watch video reel</span>
-                              <Video className="w-3.5 h-3.5" />
+                              <Video className="w-5 h-5 fill-current" />
                             </button>
-                          ) : item.category === 'web' ? (
+                          ) : item.category === 'web' && item.link ? (
                             <a 
-                              href={item.link || 'https://github.com/saurabhpn03'} 
+                              href={item.link} 
                               target="_blank" 
-                              rel="noreferrer"
-                              className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                              rel="noreferrer" 
+                              className="p-3.5 rounded-full bg-blue-500 text-white font-semibold transition-all hover:scale-110 shadow-lg cursor-pointer flex items-center justify-center"
                             >
-                              <span>Launch live site</span>
-                              <ArrowUpRight className="w-3.5 h-3.5" />
+                              <ExternalLink className="w-5 h-5" />
                             </a>
                           ) : (
-                            <span className="text-[10px] font-mono text-gray-400">
-                              Custom illustration artwork
+                            <span className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-xs font-mono font-bold text-white uppercase tracking-wider">
+                              Design Showcase
                             </span>
                           )}
+                        </div>
 
-                          {/* Quick delete marker only if sandbox mode or customizer clicked */}
-                          {customizerOpen && isAdmin && (
-                            <button
-                              onClick={() => handleRemoveProject(item.id)}
-                              className="p-1 px-2 rounded bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 text-[10px] font-semibold flex items-center gap-1"
-                              title="Delete from list"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Delete</span>
-                            </button>
-                          )}
+                        {/* Category badge */}
+                        <span className={`absolute top-4 left-4 text-[10px] font-mono font-bold tracking-widest uppercase px-2.5 py-1 rounded border ${
+                          item.category === 'web' 
+                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
+                            : item.category === 'design' 
+                            ? 'bg-purple-accent/10 text-purple-accent border-purple-accent/20' 
+                            : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                        }`}>
+                          {item.category === 'web' ? 'Web' : item.category === 'design' ? 'Design' : 'Video'}
+                        </span>
+                      </div>
+
+                      {/* Lower Card Info */}
+                      <div className="p-6 flex-1 flex flex-col justify-between bg-[#0e0e18]">
+                        <div>
+                          <h3 className="text-lg font-display font-black text-white group-hover:text-electric-blue duration-300">
+                            {item.title}
+                          </h3>
+                          <p className="text-xs text-gray-400 mt-2 line-clamp-3 leading-relaxed font-sans">
+                            {item.description}
+                          </p>
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="flex flex-wrap gap-1.5 mb-4">
+                            {item.tags && item.tags.map((tag, idx) => (
+                              <span key={idx} className="text-[10px] sm:text-[11px] font-mono text-gray-500">
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+
+                          {/* Action Link Row */}
+                          <div className="flex items-center justify-between border-t border-white/[0.04] pt-3">
+                            {item.category === 'video' ? (
+                              <button 
+                                onClick={() => setSelectedVideo(item.link || '#')}
+                                className="text-xs font-semibold text-indigo-300 hover:text-indigo-400 flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>Watch video reel</span>
+                                <Video className="w-3.5 h-3.5" />
+                              </button>
+                            ) : item.category === 'web' ? (
+                              <a 
+                                href={item.link || 'https://github.com/saurabhpn03'} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                              >
+                                <span>Launch live site</span>
+                                <ArrowUpRight className="w-3.5 h-3.5" />
+                              </a>
+                            ) : (
+                              <span className="text-[10px] font-mono text-gray-400">
+                                Custom illustration artwork
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                {filteredItems.length === 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="col-span-1 md:col-span-2 lg:col-span-3 flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01]"
+                  >
+                    <Sliders className="w-10 h-10 text-gray-500 mb-4 animate-pulse" />
+                    <h3 className="text-lg font-display font-medium text-gray-200">No projects listed yet</h3>
+                    <p className="text-sm text-gray-400 mt-2 max-w-sm">
+                      Check back later to see my latest work and creations!
+                    </p>
                   </motion.div>
-                ))}
-              </AnimatePresence>
-              {filteredItems.length === 0 && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="col-span-1 md:col-span-2 lg:col-span-3 flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01]"
-                >
-                  <Sliders className="w-10 h-10 text-gray-500 mb-4 animate-pulse" />
-                  <h3 className="text-lg font-display font-medium text-gray-200">No projects listed yet</h3>
-                  <p className="text-sm text-gray-400 mt-2 max-w-sm">
-                    {isAdmin 
-                      ? "Customize your portfolio using the button above to upload and highlight your custom developments, graphic visuals, or edit compilations!"
-                      : "Check back later to see my latest work and creations!"}
-                  </p>
-                  {isAdmin && (
-                    <button
-                      onClick={() => setCustomizerOpen(true)}
-                      className="mt-6 px-4 py-2 text-xs font-semibold rounded-lg bg-electric-blue text-black hover:opacity-90 transition-all font-display hover:scale-[1.03] active:scale-95 cursor-pointer"
-                    >
-                      Add Your First Project
-                    </button>
-                  )}
-                </motion.div>
-              )}
-            </motion.div>
+                )}
+              </motion.div>
+            )}
 
           </div>
         </section>
-
-        {/* WORKSPACE SANDBOX / CUSTOMIZER SIDEBAR DRAWER PANEL */}
-        <AnimatePresence>
-          {customizerOpen && isAdmin && (
-            <div id="sandbox-modal-container" className="fixed inset-0 z-50 flex justify-end">
-              {/* Dark Overlay backdrop */}
-              <motion.div 
-                className="absolute inset-0 bg-black/85 backdrop-blur-sm"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setCustomizerOpen(false)}
-              />
-
-              {/* Slider Content */}
-              <motion.div
-                id="sandbox-drawer"
-                className="relative w-full max-w-lg h-full bg-[#090910] border-l border-white/[0.08] p-6 sm:p-8 flex flex-col justify-between z-15 shadow-2xl overflow-y-auto"
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 180 }}
-              >
-                <div>
-                  
-                  {/* Drawer Header */}
-                  <div className="flex items-center justify-between border-b border-white/[0.05] pb-4 mb-6">
-                    <div>
-                      <h3 className="text-xl font-display font-black text-white flex items-center gap-2">
-                        <Sliders className="w-5 h-5 text-electric-blue" />
-                        <span>Dynamic Showcase Customizer</span>
-                      </h3>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Upload work directly. Everything is instantly saved in your local workspace.
-                      </p>
-                    </div>
-                    <button 
-                      onClick={() => setCustomizerOpen(false)}
-                      className="p-1.5 rounded-lg bg-white/5 text-gray-400 hover:text-white"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Drag and Drop Zone + Image selector */}
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-xs font-mono font-bold uppercase text-gray-300 mb-2">
-                        1. Upload Thumbnail or Video File (Optional)
-                      </label>
-                      
-                      <div
-                        id="dropzone"
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        className={`border-2 border-dashed rounded-xl p-5 text-center flex flex-col items-center justify-center cursor-pointer transition-all ${
-                          isDragging 
-                            ? 'border-electric-blue bg-electric-blue/5' 
-                            : (newVideoFile || newImage) 
-                            ? 'border-[#00ecff]/60 bg-[#00ecff]/5' 
-                            : 'border-white/[0.08] hover:border-gray-500'
-                        }`}
-                      >
-                        {newVideoFile ? (
-                          <div className="flex flex-col items-center">
-                            {newImage && (
-                              <img 
-                                src={newImage} 
-                                alt="Generated Video Thumbnail" 
-                                className="w-24 h-16 object-cover rounded-lg border border-white/10 mb-2" 
-                              />
-                            )}
-                            <div className="flex items-center gap-1.5 text-[10px] text-[#00ecff] font-semibold font-mono">
-                              <Video className="w-3.5 h-3.5 animate-pulse" />
-                              <span>Local Video & Thumbnail Loaded! ✔</span>
-                            </div>
-                            <button 
-                              type="button" 
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
-                                setNewVideoFile(''); 
-                                setNewImage(''); 
-                              }}
-                              className="text-[10px] text-red-400 hover:text-red-300 underline mt-1.5"
-                            >
-                              Clear video selection
-                            </button>
-                          </div>
-                        ) : newImage ? (
-                          <div className="flex flex-col items-center">
-                            <img 
-                              src={newImage} 
-                              alt="Thumbnail loading preview" 
-                              className="w-24 h-16 object-cover rounded-lg border border-white/10 mb-2" 
-                            />
-                            <p className="text-[10px] text-[#00ecff] font-semibold font-mono">Image saved in memory! ✔</p>
-                            <button 
-                              type="button" 
-                              onClick={(e) => { e.stopPropagation(); setNewImage(''); }}
-                              className="text-[10px] text-red-500 hover:text-red-400 underline mt-1"
-                            >
-                              Clear image Selection
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <Upload className="w-8 h-8 text-gray-500 mb-2 animate-bounce" />
-                            <p className="text-xs text-gray-400 font-medium">
-                              Drag and drop thumbnail or video file, or
-                            </p>
-                            <label className="mt-2 text-xs text-electric-blue underline cursor-pointer hover:text-white uppercase font-mono font-bold">
-                              Browse local files
-                              <input 
-                                type="file" 
-                                accept="image/*,video/*" 
-                                className="hidden" 
-                                onChange={handleImageSelect} 
-                              />
-                            </label>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Standard form inputs */}
-                    <form onSubmit={handleAddProject} className="space-y-4">
-                      
-                      <div>
-                        <label className="block text-xs font-mono font-bold uppercase text-gray-300 mb-1.5">
-                          Project Category
-                        </label>
-                        <select
-                          value={newCategory}
-                          onChange={(e) => setNewCategory(e.target.value as any)}
-                          className="w-full px-4 py-2.5 rounded-lg bg-[#111119] border border-white/[0.06] text-white text-sm focus:outline-none focus:border-electric-blue"
-                        >
-                          <option value="web">Web Development</option>
-                          <option value="design">Graphic Design</option>
-                          <option value="video">Video Editing</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-mono font-bold uppercase text-gray-300 mb-1.5">
-                          Project Title *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. Modern Admin Interface"
-                          value={newTitle}
-                          onChange={(e) => setNewTitle(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-lg bg-[#111119] border border-white/[0.06] text-white text-sm focus:outline-none focus:border-electric-blue"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-mono font-bold uppercase text-gray-300 mb-1.5">
-                          Project Description *
-                        </label>
-                        <textarea
-                          required
-                          placeholder="Brief paragraph of technologies used and purpose..."
-                          value={newDesc}
-                          rows={3}
-                          onChange={(e) => setNewDesc(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-lg bg-[#111119] border border-white/[0.06] text-white text-sm focus:outline-none focus:border-electric-blue resize-none"
-                        />
-                      </div>
-
-                      {newVideoFile ? (
-                        <div>
-                          <label className="block text-xs font-mono font-bold uppercase text-gray-500 mb-1.5">
-                            External Link (Video or Site Link)
-                          </label>
-                          <div className="w-full px-4 py-2.5 rounded-lg bg-[#111119]/50 border border-white/[0.03] text-gray-400 text-sm flex items-center justify-between">
-                            <span className="flex items-center gap-1.5 font-mono text-xs text-[#00ecff]">
-                              <Video className="w-3.5 h-3.5" />
-                              Using live local video file
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setNewVideoFile('')}
-                              className="text-xs text-red-400 hover:text-red-300 underline font-mono font-bold uppercase"
-                            >
-                              Use Link Instead
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <label className="block text-xs font-mono font-bold uppercase text-gray-300 mb-1.5">
-                            External Link (Video or Site Link)
-                          </label>
-                          <input
-                            type="url"
-                            placeholder={newCategory === 'video' ? 'https://www.youtube.com/watch?v=...' : 'https://github.com/...'}
-                            value={newLink}
-                            onChange={(e) => setNewLink(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-lg bg-[#111119] border border-white/[0.06] text-white text-sm focus:outline-none focus:border-electric-blue"
-                          />
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-xs font-mono font-bold uppercase text-gray-300 mb-1.5">
-                          Skills Tags (Comma Separated)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Next.js, Tailwind CSS, Figma"
-                          value={newTagsString}
-                          onChange={(e) => setNewTagsString(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-lg bg-[#111119] border border-white/[0.06] text-white text-sm focus:outline-none focus:border-[#00ecff]"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full py-3.5 rounded-xl text-xs font-bold font-display uppercase tracking-wider text-black bg-[#00ecff] hover:opacity-90 transition-all cursor-pointer mt-4"
-                      >
-                        Publish Project to Grid
-                      </button>
-
-                    </form>
-                  </div>
-
-                </div>
-
-                {/* Drawer Footer Actions */}
-                <div className="border-t border-white/[0.05] pt-4 mt-8 flex items-center justify-between gap-4">
-                  <button
-                    onClick={handleResetDefaults}
-                    className="flex-1 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Clear & Restore Defaults</span>
-                  </button>
-                  <button
-                    onClick={() => setCustomizerOpen(false)}
-                    className="py-2 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-white text-xs font-semibold"
-                  >
-                    Close
-                  </button>
-                </div>
-
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
         {/* CONTACT SECTION */}
         <section 
@@ -1693,7 +827,7 @@ export default function Home() {
                         href={platform.link}
                         target="_blank"
                         rel="noreferrer"
-                        className="w-10 h-10 rounded-lg bg-white/[0.03] border border-white/[0.05] flex items-center justify-center text-gray-400 hover:text-[#00ecff] hover:bg-electric-blue/5 hover:border-[#00ecff]/30 transition-all hover:scale-105"
+                        className="w-10 h-10 rounded-lg bg-white/[0.03] border border-white/[0.05] flex items-center justify-center text-gray-400 hover:text-[#00ecff] hover:bg-electric-blue/5 hover:border-[#00ecff]/30 transition-all hover:scale-105 cursor-pointer"
                         title={platform.name}
                       >
                         <platform.icon className="w-4 h-4" />
@@ -1803,114 +937,21 @@ export default function Home() {
       {/* FOOTER */}
       <footer id="portfolio-footer" className="w-full border-t border-white/[0.03] bg-[#030305] py-8 z-10">
         <div className="max-w-7xl mx-auto px-6 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-gray-500 font-mono flex items-center gap-2">
-            <span>&copy; {new Date().getFullYear()} Saurabh. All Rights Reserved.</span>
-            {isAdmin && (
-              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] uppercase font-bold tracking-wide">
-                Admin Mode
-              </span>
-            )}
+          <p className="text-xs text-gray-500 font-mono">
+            &copy; {new Date().getFullYear()} Saurabh. All Rights Reserved. Built with precision layout.
           </p>
           <div className="flex items-center gap-4">
-            {isAdmin ? (
-              <button
-                onClick={handleLogout}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer font-mono flex items-center gap-1"
-              >
-                <LogOut className="w-3 h-3" />
-                <span>Logout Admin</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsLoginOpen(true)}
-                className="text-xs text-gray-500 hover:text-white transition-colors cursor-pointer font-mono flex items-center gap-1"
-              >
-                <Lock className="w-3 h-3" />
-                <span>Admin Login</span>
-              </button>
-            )}
+            <a
+              href="/admin"
+              className="text-xs text-gray-500 hover:text-white transition-colors font-mono flex items-center gap-1 cursor-pointer"
+            >
+              <Lock className="w-3 h-3 text-gray-500" />
+              <span>Admin Dashboard</span>
+            </a>
             <a href="#hero" className="text-xs text-gray-500 hover:text-white transition-colors">Back to top</a>
           </div>
         </div>
       </footer>
-
-      {/* Admin Login Password Modal */}
-      <AnimatePresence>
-        {isLoginOpen && (
-          <motion.div
-            id="admin-login-modal"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
-          >
-            <div className="absolute inset-0" onClick={() => { setIsLoginOpen(false); setAdminPasswordInput(''); setLoginError(null); }} />
-            
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ duration: 0.3 }}
-              className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#0c0c14] p-6 sm:p-8 glass-card z-10 shadow-2xl"
-            >
-              <div className="flex items-center justify-between border-b border-white/[0.05] pb-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <Lock className="w-5 h-5 text-[#00ecff]" />
-                  <h3 className="text-lg font-display font-black text-white uppercase tracking-wider">
-                    Admin Authentication
-                  </h3>
-                </div>
-                <button
-                  onClick={() => { setIsLoginOpen(false); setAdminPasswordInput(''); setLoginError(null); }}
-                  className="p-1.5 rounded-lg bg-white/5 text-gray-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-mono font-bold uppercase text-gray-400 mb-2">
-                    Enter Admin Password
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    autoFocus
-                    placeholder="••••••••"
-                    value={adminPasswordInput}
-                    onChange={(e) => setAdminPasswordInput(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-black/40 border border-white/[0.06] text-white text-sm focus:outline-none focus:border-electric-blue font-mono"
-                  />
-                </div>
-
-                {loginError && (
-                  <p className="text-xs text-red-400 font-mono flex items-center gap-1.5">
-                    <span>⚠</span> {loginError}
-                  </p>
-                )}
-
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/[0.05] mt-6">
-                  <button
-                    type="button"
-                    onClick={() => { setIsLoginOpen(false); setAdminPasswordInput(''); setLoginError(null); }}
-                    className="py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="py-2.5 px-5 rounded-xl text-xs font-bold uppercase tracking-wider text-black bg-[#00ecff] hover:opacity-90 transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Sign In</span>
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
     </div>
   );
